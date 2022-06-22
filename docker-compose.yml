@@ -1,0 +1,110 @@
+version: "3"
+services:
+
+  ## CHATBOT-PROXY ================================================================================
+  nginx-proxy:
+    image: gregsymons/docker-nginx-proxy
+    container_name: chatbot_proxy
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+
+  ## CHATBOT-FRONTEND ================================================================================
+  chatbot_frontend:
+    container_name: chatbot_frontend
+    image: node:15.10.0-alpine3.10
+    user: root
+    ports:
+      - "3000:8080"
+    volumes:
+      - ./chatbot-frontend:/home/node/app
+    command: sh -c "cd /home/node/app && yarn install && yarn run start-dev"
+    environment:
+      VIRTUAL_HOST: 'chatbot.local'
+      VIRTUAL_PATH: '/'
+      CHATBOT_API_URL: http://localhost:3002
+      FORCE_RESPONSE_RATING: 'false'
+      PORT: 8080
+
+  ## CHATBOT-ADMIN =================================================================================
+  chatbot_admin:
+    container_name: chatbot_admin
+    image: node:15.10.0-alpine3.10
+    user: "root"
+    working_dir: /home/node/app
+    ports:
+      - "3001:8080"
+    volumes:
+      - ./chatbot-admin:/home/node/app
+    command: sh -c "pwd && yarn && npm run start-dev"
+    depends_on:
+      - "chatbot_api"
+    environment:
+      VIRTUAL_HOST: 'admin.chatbot.local'
+      VIRTUAL_PATH: '/'
+      PORT: 8080
+      NODE_ENV: development
+      CHATBOT_API_URL: http://chatbot_api:8080
+      SESSION_COOKIE_KEY1: 'change-to-strong-key-1'
+      SESSION_COOKIE_KEY2: 'change-to-strong-key-2'
+      SESSION_COOKIE_KEY3: 'change-to-strong-key-3'
+
+  ## CHATBOT-API ==++===============================================================================
+  chatbot_api:
+    container_name: chatbot_api
+    image: pereirasthiago/chatterbot:1.1.0a7
+    ports:
+      - "3002:8080"
+    volumes:
+      - ./chatbot-api:/app
+    command: python app.py
+    depends_on:
+      - "chatbot_db"
+    environment:
+      VIRTUAL_HOST: 'chatbot.local'
+      VIRTUAL_PATH: '/api'
+      MINIMUM_CONFIDENCE: 0.6
+      MYSQL_HOST: chatbot_db
+      MYSQL_USER: dev
+      MYSQL_PASSWORD: dev
+      MYSQL_DATABASE: chatbot
+      MYSQL_PORT: 3306
+      DOMAIN_WHITELIST: ''
+      FLASK_ENV: development
+      ADMIN_NAME: 'Administrador'
+      ADMIN_USERNAME: 'admin'
+      ADMIN_PASSWORD: '123456'
+      SECRET_KEY: 'change-to-strong-secret-key'
+      JWT_SECRET_KEY: 'change-to-strong-secret-key'
+      JWT_ACCESS_TOKEN_EXPIRES_MINUTES: 1440
+      DEBUG: 'True'
+      PORT: 8080
+    #command: ["tail", "-f", "/dev/null"]
+
+  ## CHATBOT-ADMINER =================================================================================
+  chatbot_adminer:
+    container_name: chatbot_adminer
+    image: adminer
+    restart: always
+    ports:
+      - 3003:8080
+    environment:
+      VIRTUAL_HOST: 'chatbot.local'
+      VIRTUAL_PATH: '/adminer'
+
+  ## CHATBOT-DB ======================================================================================
+  chatbot_db:
+    container_name: chatbot_db
+    image: jbergstroem/mariadb-alpine:10.4.17
+    restart: always
+    ports:
+      - "3306:3306"
+    volumes:
+     - ${PWD}/.mariadb:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      MYSQL_DATABASE: chatbot
